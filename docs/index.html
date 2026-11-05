@@ -105,8 +105,9 @@
       <section id="viewFeed" class="space-y-2.5"></section>
 
       <!-- TAB 2: BUG LIST -->
-      <section id="viewBugs" class="hidden space-y-3">
+      <section id="viewBugs" class="hidden space-y-2.5">
         <!-- Filter chips -->
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" id="versionFilters"></div>
         <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" id="memberFilters"></div>
         <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" id="statusFilters"></div>
         <div id="bugListContainer" class="space-y-2"></div>
@@ -136,6 +137,7 @@
     }
 
     let dashboardData = null;
+    let selectedVersion = 'ALL';
     let selectedMember = 'ALL';
     let selectedStatus = 'ALL';
 
@@ -299,15 +301,23 @@
     }
 
     function renderFilters() {
-      const members = ['ALL', 'hiendm', 'huykd', 'duytk', 'thuongnd', 'hungnv3'];
+      const versions = ['ALL', 'OH 3.17.0', 'OR 1.13'];
+      const dynMembers = (dashboardData.members || []).map(m => m.username);
+      const members = ['ALL', ...dynMembers];
       const statuses = [
-        { id: 'ALL', label: 'Tất cả' },
+        { id: 'ALL', label: 'Tất cả trạng thái' },
         { id: 'UNFINISHED', label: 'Chưa xong' },
         { id: 'In Review', label: 'In Review' },
         { id: 'In Progress', label: 'In Progress' },
-        { id: 'Open', label: 'Open' },
-        { id: 'Done', label: 'Done' }
+        { id: 'Open', label: 'Open / Pending' },
+        { id: 'Done', label: 'Done / Closed / Resolved' }
       ];
+
+      document.getElementById('versionFilters').innerHTML = versions.map(v => `
+        <button onclick="selectedVersion='${v}';renderFilters();renderBugs();" class="px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${selectedVersion === v ? 'bg-indigo-600 text-white' : 'card-surface muted-text border border-slate-700/40'}">
+          ${v === 'ALL' ? '📦 Cả 2 bản (OH 3.17.0 & OR 1.13)' : '📦 ' + v}
+        </button>
+      `).join('');
 
       document.getElementById('memberFilters').innerHTML = members.map(m => `
         <button onclick="selectedMember='${m}';renderFilters();renderBugs();" class="px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${selectedMember === m ? 'bg-blue-600 text-white' : 'card-surface muted-text border border-slate-700/40'}">
@@ -324,27 +334,29 @@
 
     function renderBugs() {
       const bugs = (dashboardData.bugs || []).filter(b => {
+        if (selectedVersion !== 'ALL' && !(b.fix_versions || []).includes(selectedVersion)) return false;
         if (selectedMember !== 'ALL' && b.assignee !== selectedMember) return false;
         if (selectedStatus === 'UNFINISHED' && b.sheet_status === 'Done') return false;
-        if (selectedStatus !== 'ALL' && selectedStatus !== 'UNFINISHED' && b.sheet_status !== selectedStatus) return false;
+        if (selectedStatus === 'Open' && b.sheet_status !== 'Open' && b.sheet_status !== 'Pending') return false;
+        if (selectedStatus !== 'ALL' && selectedStatus !== 'UNFINISHED' && selectedStatus !== 'Open' && b.sheet_status !== selectedStatus) return false;
         return true;
       });
 
       const container = document.getElementById('bugListContainer');
       if (!bugs.length) {
-        container.innerHTML = `<div class="card-surface p-4 rounded-xl text-xs muted-text text-center">Không có bug nào khớp bộ lọc.</div>`;
+        container.innerHTML = `<div class="card-surface p-4 rounded-xl text-xs muted-text text-center">Không có bug/task nào khớp bộ lọc.</div>`;
         return;
       }
 
       container.innerHTML = bugs.map(b => `
         <div onclick="openBugDetail('${escapeHtml(b.key)}')" class="card-surface p-3 rounded-xl border border-slate-700/40 cursor-pointer active:scale-[0.99] transition">
           <div class="flex items-center justify-between gap-2">
-            <span class="font-bold text-xs text-blue-400">${escapeHtml(b.key)} • ${escapeHtml(b.assignee)} (${escapeHtml(b.hours)}h)</span>
-            <span class="px-2 py-0.5 rounded border text-xs font-semibold ${statusBadgeClass(b.sheet_status)}">${escapeHtml(b.sheet_status)} (${escapeHtml(b.jira_status)})</span>
+            <span class="font-bold text-xs text-blue-400">${escapeHtml(b.key)} • ${escapeHtml(b.assignee)} ${b.fix_versions && b.fix_versions.length ? '• [' + escapeHtml(b.fix_versions.join(', ')) + ']' : ''}</span>
+            <span class="px-2 py-0.5 rounded border text-xs font-semibold ${statusBadgeClass(b.sheet_status)}">${escapeHtml(b.jira_status)}</span>
           </div>
           <div class="text-xs font-medium mt-1">${escapeHtml(b.summary)}</div>
           <div class="flex items-center justify-between mt-2 text-xs muted-text">
-            <span>Hạn: ${escapeHtml(b.duedate || '-')}</span>
+            <span>Labels: ${escapeHtml((b.labels || []).join(', ') || '-')}</span>
             <span>💬 ${(b.comments || []).length} bình luận • 🔄 ${(b.history || []).length} cập nhật</span>
           </div>
         </div>
