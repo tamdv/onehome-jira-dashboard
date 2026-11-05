@@ -1,0 +1,11 @@
+# Bảo mật tuyệt đối — Không bao giờ commit Credentials & Logs nội bộ
+Credentials/
+*.json.key
+.env
+logs/
+__pycache__/
+*.pyc
+.DS_Store
+*.xlsx
+*.csv
+

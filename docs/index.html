@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ONE Home — Jira Dashboard</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #0f172a);
+      --card: var(--tg-theme-secondary-bg-color, #1e293b);
+      --text: var(--tg-theme-text-color, #f8fafc);
+      --muted: var(--tg-theme-hint-color, #94a3b8);
+      --accent: var(--tg-theme-button-color, #3b82f6);
+      --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .card-surface {
+      background-color: var(--card);
+    }
+    .muted-text {
+      color: var(--muted);
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-16 antialiased">
+  <!-- Lock Screen for unauthorized visitors -->
+  <div id="lockScreen" class="hidden min-h-screen flex items-center justify-center p-6">
+    <div class="card-surface border border-slate-700/60 rounded-2xl p-6 max-w-sm w-full text-center space-y-3 shadow-xl">
+      <div class="text-3xl">🔒</div>
+      <h2 class="font-bold text-base">Dữ liệu được bảo vệ (AES-256-GCM)</h2>
+      <p class="text-xs muted-text leading-relaxed">
+        Trang này đã được mã hoá đầu-cuối. Vui lòng bấm mở trực tiếp từ nút <b>📊 Jira Dashboard</b> trên thanh ghim của nhóm Telegram <b>STC - Mobile</b>.
+      </p>
+    </div>
+  </div>
+
+  <!-- App Container -->
+  <div id="appContainer">
+    <!-- Header -->
+    <header class="sticky top-0 z-20 card-surface border-b border-slate-700/40 px-4 py-3 shadow-sm">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-base tracking-tight">Jira Dashboard — Team Mobile</h1>
+            <span id="weekBadge" class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-semibold">W45_2026</span>
+          </div>
+          <p id="syncTime" class="text-xs muted-text mt-0.5">Đang tải & giải mã dữ liệu...</p>
+        </div>
+        <button onclick="markAllRead()" id="btnMarkRead" class="hidden px-2.5 py-1.5 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center gap-1">
+          <span>🔴 Đã xem</span>
+        </button>
+      </div>
+
+      <!-- KPI Summary -->
+      <div class="grid grid-cols-4 gap-2 mt-3 text-center">
+        <div class="p-2 rounded-xl bg-slate-500/10 border border-slate-500/20">
+          <div class="text-xs muted-text">Tổng Bugs</div>
+          <div id="kpiTotal" class="font-bold text-base mt-0.5">-</div>
+        </div>
+        <div class="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+          <div class="text-xs text-emerald-400">Done</div>
+          <div id="kpiDone" class="font-bold text-base text-emerald-400 mt-0.5">-</div>
+        </div>
+        <div class="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <div class="text-xs text-amber-400">In Review</div>
+          <div id="kpiReview" class="font-bold text-base text-amber-400 mt-0.5">-</div>
+        </div>
+        <div class="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20">
+          <div class="text-xs text-rose-400">Còn lại</div>
+          <div id="kpiOpen" class="font-bold text-base text-rose-400 mt-0.5">-</div>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="flex gap-2 mt-3 pt-1 border-t border-slate-700/40">
+        <button id="tabBtnFeed" onclick="switchTab('feed')" class="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white">
+          🔔 Biến động <span id="feedCount" class="ml-0.5 opacity-90"></span>
+        </button>
+        <button id="tabBtnBugs" onclick="switchTab('bugs')" class="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-slate-500/10 muted-text">
+          🐞 Danh sách Bugs
+        </button>
+        <button id="tabBtnMembers" onclick="switchTab('members')" class="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-slate-500/10 muted-text">
+          👤 Theo nhân sự
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="p-3.5 max-w-2xl mx-auto">
+      <!-- TAB 1: ACTIVITY FEED -->
+      <section id="viewFeed" class="space-y-2.5"></section>
+
+      <!-- TAB 2: BUG LIST -->
+      <section id="viewBugs" class="hidden space-y-3">
+        <!-- Filter chips -->
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" id="memberFilters"></div>
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" id="statusFilters"></div>
+        <div id="bugListContainer" class="space-y-2"></div>
+      </section>
+
+      <!-- TAB 3: MEMBERS -->
+      <section id="viewMembers" class="hidden space-y-2.5"></section>
+    </main>
+  </div>
+
+  <!-- Modal Detail Drawer -->
+  <div id="detailModal" class="fixed inset-0 z-50 hidden bg-black/70 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="card-surface w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[85vh] flex flex-col border border-slate-700/60 shadow-2xl">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700/50">
+        <div class="font-bold text-sm" id="modalTitle">STC_ONEHOME-xxxx</div>
+        <button onclick="closeModal()" class="text-xs px-2.5 py-1 rounded-lg bg-slate-500/20 font-semibold">✕ Đóng</button>
+      </div>
+      <div id="modalBody" class="p-4 overflow-y-auto space-y-3 text-xs"></div>
+    </div>
+  </div>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    let dashboardData = null;
+    let selectedMember = 'ALL';
+    let selectedStatus = 'ALL';
+
+    function b64ToBytes(b64) {
+      const norm = b64.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = norm.length % 4 === 0 ? '' : '='.repeat(4 - (norm.length % 4));
+      const bin = atob(norm + pad);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }
+
+    function getEncryptionKey() {
+      const hash = window.location.hash || '';
+      const m = hash.match(/key=([A-Za-z0-9_-]+)/);
+      if (m && m[1]) {
+        localStorage.setItem('jira_dashboard_aes_key', m[1]);
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+        return m[1];
+      }
+      return localStorage.getItem('jira_dashboard_aes_key') || '';
+    }
+
+    async function decryptPayload(encObj, keyB64) {
+      const rawKey = b64ToBytes(keyB64);
+      const iv = b64ToBytes(encObj.iv);
+      const ct = b64ToBytes(encObj.ct);
+      const cryptoKey = await window.crypto.subtle.importKey(
+        'raw',
+        rawKey,
+        { name: 'AES-GCM' },
+        false,
+        ['decrypt']
+      );
+      const plainBuf = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        cryptoKey,
+        ct
+      );
+      const decodedText = new TextDecoder('utf-8').decode(plainBuf);
+      return JSON.parse(decodedText);
+    }
+
+    function showLockScreen() {
+      document.getElementById('appContainer').classList.add('hidden');
+      document.getElementById('lockScreen').classList.remove('hidden');
+    }
+
+    function statusBadgeClass(st) {
+      if (st === 'Done' || st === 'Closed' || st === 'Resolved') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+      if (st === 'In Review' || st === 'Testing') return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+      if (st === 'In Progress') return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      if (st === 'Reopened') return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+      return 'bg-rose-500/20 text-rose-400 border-rose-500/30';
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function loadDashboard() {
+      try {
+        const keyB64 = getEncryptionKey();
+        const res = await fetch('./data/jira_dashboard.json?t=' + Date.now());
+        const rawJson = await res.json();
+        if (rawJson && rawJson.encrypted) {
+          if (!keyB64) {
+            showLockScreen();
+            return;
+          }
+          try {
+            dashboardData = await decryptPayload(rawJson, keyB64);
+          } catch (decErr) {
+            showLockScreen();
+            return;
+          }
+        } else {
+          dashboardData = rawJson;
+        }
+        renderAll();
+      } catch (e) {
+        document.getElementById('syncTime').textContent = 'Chưa tải được dữ liệu: ' + e.message;
+      }
+    }
+
+    function renderAll() {
+      if (!dashboardData) return;
+      document.getElementById('weekBadge').textContent = dashboardData.week || 'W45_2026';
+      document.getElementById('syncTime').textContent = '🔒 Đã mã hoá • Cập nhật lúc: ' + (dashboardData.updated_at || '-');
+
+      const kpi = dashboardData.kpi || {};
+      document.getElementById('kpiTotal').textContent = kpi.total ?? 0;
+      document.getElementById('kpiDone').textContent = `${kpi.done ?? 0} (${kpi.done_pct ?? 0}%)`;
+      document.getElementById('kpiReview').textContent = kpi.in_review ?? 0;
+      document.getElementById('kpiOpen').textContent = (kpi.in_progress ?? 0) + (kpi.open ?? 0);
+
+      const lastSeen = localStorage.getItem('jira_last_seen_ts') || '';
+      const events = dashboardData.events || [];
+      const unreadCount = events.filter(ev => ev.timestamp > lastSeen).length;
+      document.getElementById('feedCount').textContent = `(${events.length})`;
+
+      const btnMark = document.getElementById('btnMarkRead');
+      if (unreadCount > 0) {
+        btnMark.classList.remove('hidden');
+        btnMark.innerHTML = `<span>🔴 ${unreadCount} mới • Đánh dấu đã xem</span>`;
+      } else {
+        btnMark.classList.add('hidden');
+      }
+
+      renderFeed(events, lastSeen);
+      renderFilters();
+      renderBugs();
+      renderMembers();
+    }
+
+    function markAllRead() {
+      if (!dashboardData || !dashboardData.events || !dashboardData.events.length) return;
+      const newest = dashboardData.events[0].timestamp;
+      localStorage.setItem('jira_last_seen_ts', newest);
+      renderAll();
+    }
+
+    function renderFeed(events, lastSeen) {
+      const container = document.getElementById('viewFeed');
+      if (!events.length) {
+        container.innerHTML = `<div class="card-surface p-4 rounded-xl text-xs muted-text text-center">Chưa có biến động mới nào.</div>`;
+        return;
+      }
+      container.innerHTML = events.map(ev => {
+        const isNew = ev.timestamp > lastSeen;
+        const badge = ev.type === 'comment'
+          ? `<span class="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-semibold text-xs">💬 Comment mới</span>`
+          : `<span class="px-2 py-0.5 rounded border ${statusBadgeClass(ev.to_val)} font-semibold text-xs">${escapeHtml(ev.from_val)} → ${escapeHtml(ev.to_val)}</span>`;
+
+        return `
+          <div onclick="openBugDetail('${escapeHtml(ev.key)}')" class="card-surface p-3 rounded-xl border ${isNew ? 'border-rose-500/60' : 'border-slate-700/40'} cursor-pointer active:scale-[0.99] transition">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5">
+                ${isNew ? '<span class="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>' : ''}
+                <span class="font-bold text-xs text-blue-400">${escapeHtml(ev.key)}</span>
+                <span class="text-xs muted-text">• ${escapeHtml(ev.assignee_name || ev.assignee)}</span>
+              </div>
+              ${badge}
+            </div>
+            <div class="text-xs font-medium mt-1">${escapeHtml(ev.summary)}</div>
+            ${ev.detail ? `<div class="mt-2 p-2 rounded-lg bg-slate-500/10 border border-slate-700/30 text-xs">${escapeHtml(ev.detail)}</div>` : ''}
+            <div class="flex items-center justify-between mt-2 text-xs muted-text">
+              <span>Bởi: <b>${escapeHtml(ev.author)}</b></span>
+              <span>${escapeHtml(ev.time_display)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderFilters() {
+      const members = ['ALL', 'hiendm', 'huykd', 'duytk', 'thuongnd', 'hungnv3'];
+      const statuses = [
+        { id: 'ALL', label: 'Tất cả' },
+        { id: 'UNFINISHED', label: 'Chưa xong' },
+        { id: 'In Review', label: 'In Review' },
+        { id: 'In Progress', label: 'In Progress' },
+        { id: 'Open', label: 'Open' },
+        { id: 'Done', label: 'Done' }
+      ];
+
+      document.getElementById('memberFilters').innerHTML = members.map(m => `
+        <button onclick="selectedMember='${m}';renderFilters();renderBugs();" class="px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${selectedMember === m ? 'bg-blue-600 text-white' : 'card-surface muted-text border border-slate-700/40'}">
+          ${m === 'ALL' ? '👤 Tất cả TV' : m}
+        </button>
+      `).join('');
+
+      document.getElementById('statusFilters').innerHTML = statuses.map(s => `
+        <button onclick="selectedStatus='${s.id}';renderFilters();renderBugs();" class="px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${selectedStatus === s.id ? 'bg-blue-600 text-white' : 'card-surface muted-text border border-slate-700/40'}">
+          ${s.label}
+        </button>
+      `).join('');
+    }
+
+    function renderBugs() {
+      const bugs = (dashboardData.bugs || []).filter(b => {
+        if (selectedMember !== 'ALL' && b.assignee !== selectedMember) return false;
+        if (selectedStatus === 'UNFINISHED' && b.sheet_status === 'Done') return false;
+        if (selectedStatus !== 'ALL' && selectedStatus !== 'UNFINISHED' && b.sheet_status !== selectedStatus) return false;
+        return true;
+      });
+
+      const container = document.getElementById('bugListContainer');
+      if (!bugs.length) {
+        container.innerHTML = `<div class="card-surface p-4 rounded-xl text-xs muted-text text-center">Không có bug nào khớp bộ lọc.</div>`;
+        return;
+      }
+
+      container.innerHTML = bugs.map(b => `
+        <div onclick="openBugDetail('${escapeHtml(b.key)}')" class="card-surface p-3 rounded-xl border border-slate-700/40 cursor-pointer active:scale-[0.99] transition">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-bold text-xs text-blue-400">${escapeHtml(b.key)} • ${escapeHtml(b.assignee)} (${escapeHtml(b.hours)}h)</span>
+            <span class="px-2 py-0.5 rounded border text-xs font-semibold ${statusBadgeClass(b.sheet_status)}">${escapeHtml(b.sheet_status)} (${escapeHtml(b.jira_status)})</span>
+          </div>
+          <div class="text-xs font-medium mt-1">${escapeHtml(b.summary)}</div>
+          <div class="flex items-center justify-between mt-2 text-xs muted-text">
+            <span>Hạn: ${escapeHtml(b.duedate || '-')}</span>
+            <span>💬 ${(b.comments || []).length} bình luận • 🔄 ${(b.history || []).length} cập nhật</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderMembers() {
+      const members = dashboardData.members || [];
+      document.getElementById('viewMembers').innerHTML = members.map(m => `
+        <div class="card-surface p-3 rounded-xl border border-slate-700/40">
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="font-bold text-sm">${escapeHtml(m.full_name)}</span>
+              <span class="text-xs muted-text ml-1">(${escapeHtml(m.username)})</span>
+            </div>
+            <span class="text-xs font-bold text-emerald-400">${m.done_bugs}/${m.total_bugs} Bugs Done (${m.done_pct}%)</span>
+          </div>
+          <div class="w-full h-2 bg-slate-700/50 rounded-full overflow-hidden mt-2">
+            <div class="h-full bg-emerald-500 rounded-full" style="width: ${m.done_pct}%"></div>
+          </div>
+          <div class="flex items-center justify-between text-xs muted-text mt-2">
+            <span>Done: <b>${m.done_bugs}</b></span>
+            <span>In Review: <b class="text-amber-400">${m.review_bugs}</b></span>
+            <span>In Progress: <b class="text-blue-400">${m.prog_bugs}</b></span>
+            <span>Open: <b class="text-rose-400">${m.open_bugs}</b></span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openBugDetail(key) {
+      const bug = (dashboardData.bugs || []).find(b => b.key === key);
+      if (!bug) return;
+      document.getElementById('modalTitle').textContent = `${bug.key} — ${bug.assignee_name || bug.assignee}`;
+
+      const commentsHtml = (bug.comments || []).length
+        ? bug.comments.map(c => `
+            <div class="p-2.5 rounded-lg bg-slate-500/10 border border-slate-700/40">
+              <div class="flex justify-between muted-text mb-1">
+                <b class="text-blue-400">${escapeHtml(c.author)}</b>
+                <span>${escapeHtml(c.created)}</span>
+              </div>
+              <div class="whitespace-pre-wrap">${escapeHtml(c.body)}</div>
+            </div>
+          `).join('')
+        : `<div class="muted-text italic">Chưa có bình luận nào trên Jira.</div>`;
+
+      const historyHtml = (bug.history || []).length
+        ? bug.history.map(h => `
+            <div class="flex items-center justify-between py-1.5 border-b border-slate-700/30">
+              <div><b>${escapeHtml(h.author)}</b> đổi <code>${escapeHtml(h.field)}</code>: <b>${escapeHtml(h.from)}</b> → <b class="text-emerald-400">${escapeHtml(h.to)}</b></div>
+              <span class="muted-text shrink-0 ml-2">${escapeHtml(h.created)}</span>
+            </div>
+          `).join('')
+        : `<div class="muted-text italic">Chưa có lịch sử chuyển trạng thái.</div>`;
+
+      document.getElementById('modalBody').innerHTML = `
+        <div class="space-y-1">
+          <div class="font-semibold text-sm">${escapeHtml(bug.summary)}</div>
+          <div class="flex flex-wrap gap-2 pt-1">
+            <span class="px-2 py-0.5 rounded border ${statusBadgeClass(bug.sheet_status)} font-semibold">Sheet: ${escapeHtml(bug.sheet_status)} (Jira: ${escapeHtml(bug.jira_status)})</span>
+            <span class="px-2 py-0.5 rounded bg-slate-500/20">Hạn: ${escapeHtml(bug.duedate || '-')}</span>
+            <span class="px-2 py-0.5 rounded bg-slate-500/20">Ước lượng: ${escapeHtml(bug.hours)}h</span>
+          </div>
+        </div>
+        <div>
+          <div class="font-bold text-xs uppercase tracking-wider muted-text mb-1.5">💬 Bình luận trên Jira (${(bug.comments || []).length})</div>
+          <div class="space-y-2">${commentsHtml}</div>
+        </div>
+        <div>
+          <div class="font-bold text-xs uppercase tracking-wider muted-text mb-1.5">🔄 Lịch sử thay đổi (${(bug.history || []).length})</div>
+          <div class="space-y-1">${historyHtml}</div>
+        </div>
+        <div class="pt-2">
+          <a href="${escapeHtml(bug.url)}" target="_blank" class="block w-full text-center py-2.5 rounded-xl bg-blue-600 text-white font-semibold">
+            🔗 Mở Ticket trực tiếp trên Jira
+          </a>
+        </div>
+      `;
+      document.getElementById('detailModal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('detailModal').classList.add('hidden');
+    }
+
+    function switchTab(tab) {
+      const map = { feed: 'viewFeed', bugs: 'viewBugs', members: 'viewMembers' };
+      const btns = { feed: 'tabBtnFeed', bugs: 'tabBtnBugs', members: 'tabBtnMembers' };
+      Object.keys(map).forEach(k => {
+        const el = document.getElementById(map[k]);
+        const btn = document.getElementById(btns[k]);
+        if (k === tab) {
+          el.classList.remove('hidden');
+          btn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white';
+        } else {
+          el.classList.add('hidden');
+          btn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-lg bg-slate-500/10 muted-text';
+        }
+      });
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>
